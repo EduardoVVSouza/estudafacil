@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Calendar, Clock, Plus, Edit, Trash2, BookOpen } from "lucide-react";
+import { Calendar, Clock, Plus, Edit, Trash2, BookOpen, Brain, Upload, FileText, Sparkles } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,10 +29,18 @@ const scheduleSchema = z.object({
   hoursPerDay: z.number().min(1, "Mínimo 1 hora por dia").max(24, "Máximo 24 horas por dia"),
 });
 
+const aiScheduleSchema = z.object({
+  examDate: z.string().min(1, "Data do concurso é obrigatória"),
+  title: z.string().optional(),
+});
+
 type ScheduleFormData = z.infer<typeof scheduleSchema>;
+type AiScheduleFormData = z.infer<typeof aiScheduleSchema>;
 
 export default function Schedule() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   const { data: schedules, isLoading } = useQuery({
@@ -48,6 +56,14 @@ export default function Schedule() {
       startDate: "",
       endDate: "",
       hoursPerDay: 2,
+    },
+  });
+
+  const aiForm = useForm<AiScheduleFormData>({
+    resolver: zodResolver(aiScheduleSchema),
+    defaultValues: {
+      examDate: "",
+      title: "",
     },
   });
 
@@ -80,6 +96,49 @@ export default function Schedule() {
     },
   });
 
+  const createAiScheduleMutation = useMutation({
+    mutationFn: async (data: { examDate: string; title?: string; file: File }) => {
+      const formData = new FormData();
+      formData.append("editalPdf", data.file);
+      formData.append("examDate", data.examDate);
+      if (data.title) {
+        formData.append("title", data.title);
+      }
+
+      const response = await fetch(`/api/user/${MOCK_USER_ID}/schedules/ai-generate`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Erro ao gerar cronograma");
+      }
+
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/user/${MOCK_USER_ID}/schedules`] });
+      setIsAiDialogOpen(false);
+      aiForm.reset();
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      toast({
+        title: "Cronograma criado com IA!",
+        description: `Cronograma gerado para ${data.analysis.daysUntilExam} dias de estudo com ${data.analysis.subjects.length} matérias.`,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Erro na geração por IA",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const deleteScheduleMutation = useMutation({
     mutationFn: async (id: number) => {
       await apiRequest("DELETE", `/api/schedules/${id}`);
@@ -104,6 +163,33 @@ export default function Schedule() {
     createScheduleMutation.mutate(data);
   };
 
+  const onAiSubmit = (data: AiScheduleFormData) => {
+    const file = fileInputRef.current?.files?.[0];
+    if (!file) {
+      toast({
+        title: "Erro",
+        description: "Por favor, selecione o PDF do edital.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (file.type !== "application/pdf") {
+      toast({
+        title: "Erro",
+        description: "Por favor, selecione apenas arquivos PDF.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    createAiScheduleMutation.mutate({
+      examDate: data.examDate,
+      title: data.title,
+      file,
+    });
+  };
+
   const handleDelete = (id: number) => {
     if (window.confirm("Tem certeza que deseja excluir este cronograma?")) {
       deleteScheduleMutation.mutate(id);
@@ -120,14 +206,134 @@ export default function Schedule() {
           </p>
         </div>
 
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-primary-orange hover:bg-secondary-orange text-white">
-              <Plus className="w-4 h-4 mr-2" />
-              Novo Cronograma
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-md">
+        <div className="flex space-x-3">
+          <Dialog open={isAiDialogOpen} onOpenChange={setIsAiDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white">
+                <Brain className="w-4 h-4 mr-2" />
+                Criar com IA
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle className="flex items-center">
+                  <Sparkles className="w-5 h-5 mr-2 text-purple-600" />
+                  Cronograma Inteligente
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="bg-gradient-to-r from-purple-50 to-blue-50 p-4 rounded-lg border border-purple-200">
+                  <h4 className="font-semibold text-purple-800 mb-2">Como funciona:</h4>
+                  <ul className="text-sm text-purple-700 space-y-1">
+                    <li>• Envie o PDF do edital do seu concurso</li>
+                    <li>• Informe a data da prova</li>
+                    <li>• A IA analisará as matérias e criará seu cronograma</li>
+                  </ul>
+                </div>
+                
+                <Form {...aiForm}>
+                  <form onSubmit={aiForm.handleSubmit(onAiSubmit)} className="space-y-4">
+                    <FormField
+                      control={aiForm.control}
+                      name="title"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Título (opcional)</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Ex: Concurso TRT 2024" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={aiForm.control}
+                      name="examDate"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Data do Concurso</FormLabel>
+                          <FormControl>
+                            <Input type="date" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <div className="space-y-2">
+                      <Label htmlFor="editalPdf">PDF do Edital</Label>
+                      <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-primary-orange transition-colors">
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept=".pdf"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              // Update UI to show selected file
+                            }
+                          }}
+                        />
+                        <FileText className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="text-primary-orange hover:text-secondary-orange font-medium"
+                        >
+                          Clique para selecionar o PDF do edital
+                        </button>
+                        <p className="text-xs text-gray-500 mt-1">Apenas arquivos PDF são aceitos</p>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end space-x-2 pt-4">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setIsAiDialogOpen(false);
+                          aiForm.reset();
+                          if (fileInputRef.current) {
+                            fileInputRef.current.value = "";
+                          }
+                        }}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button
+                        type="submit"
+                        className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                        disabled={createAiScheduleMutation.isPending}
+                      >
+                        {createAiScheduleMutation.isPending ? (
+                          <div className="flex items-center">
+                            <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
+                            Analisando...
+                          </div>
+                        ) : (
+                          <>
+                            <Brain className="w-4 h-4 mr-2" />
+                            Gerar Cronograma
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </form>
+                </Form>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-primary-orange hover:bg-secondary-orange text-white">
+                <Plus className="w-4 h-4 mr-2" />
+                Criar Manual
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Criar Novo Cronograma</DialogTitle>
             </DialogHeader>
@@ -275,7 +481,7 @@ export default function Schedule() {
             </Card>
           ))}
         </div>
-      ) : schedules && schedules.length > 0 ? (
+      ) : schedules && Array.isArray(schedules) && schedules.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {schedules.map((schedule: StudySchedule) => (
             <Card key={schedule.id} className="hover:shadow-lg transition-shadow">

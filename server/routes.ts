@@ -179,6 +179,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // AI-powered schedule creation from edital
+  app.post("/api/user/:userId/schedules/ai-generate", upload.single('editalPdf'), async (req, res) => {
+    try {
+      const userId = parseInt(req.params.userId);
+      const { examDate, title } = req.body;
+      
+      if (!req.file) {
+        return res.status(400).json({ message: "PDF do edital é obrigatório" });
+      }
+
+      if (!examDate) {
+        return res.status(400).json({ message: "Data do concurso é obrigatória" });
+      }
+
+      // Validar data do concurso
+      const examDateObj = new Date(examDate);
+      const today = new Date();
+      if (examDateObj <= today) {
+        return res.status(400).json({ message: "Data do concurso deve ser futura" });
+      }
+
+      // First, save the edital PDF
+      const editalPdf = await storage.createPdf({
+        title: title || `Edital - ${req.file.originalname}`,
+        filename: req.file.originalname,
+        userId,
+      });
+
+      // Convert PDF buffer to base64 for OpenAI
+      const base64Content = req.file.buffer.toString('base64');
+      
+      // Extract text from PDF using OpenAI
+      const pdfText = await extractTextFromPDF(base64Content);
+      
+      // Analyze the edital and generate study plan
+      const analysis = await analyzeEditalPDF(pdfText, examDate);
+
+      // Calculate study period
+      const startDate = new Date();
+      const endDate = new Date(examDate);
+      const timeDiff = endDate.getTime() - startDate.getTime();
+      const daysUntilExam = Math.ceil(timeDiff / (1000 * 3600 * 24));
+      
+      // Calculate average hours per day
+      const totalEstimatedHours = Object.values(analysis.studyRecommendations.estimatedHoursPerSubject)
+        .reduce((sum, hours) => sum + hours, 0);
+      const hoursPerDay = Math.ceil(totalEstimatedHours / daysUntilExam);
+
+      // Create the AI-generated schedule
+      const scheduleData = {
+        userId,
+        title: title || `Cronograma - ${analysis.subjects.join(', ')}`,
+        description: `Cronograma gerado automaticamente baseado no edital. ${daysUntilExam} dias até o concurso.`,
+        subjects: analysis.subjects,
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: examDate,
+        hoursPerDay: Math.min(hoursPerDay, 12), // Máximo 12h por dia
+        examDate,
+        editalPdfId: editalPdf.id,
+        weeklyPlan: analysis.studyRecommendations.weeklyDistribution,
+        isAiGenerated: true,
+      };
+
+      const schedule = await storage.createSchedule(scheduleData);
+      
+      res.json({
+        schedule,
+        analysis: {
+          subjects: analysis.subjects,
+          topics: analysis.topics,
+          daysUntilExam,
+          totalEstimatedHours,
+          editalPdf,
+        }
+      });
+
+    } catch (error) {
+      console.error("Erro na geração de cronograma por IA:", error);
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : "Erro ao gerar cronograma com IA"
+      });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
