@@ -40,6 +40,7 @@ type AiScheduleFormData = z.infer<typeof aiScheduleSchema>;
 export default function Schedule() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -166,8 +167,7 @@ export default function Schedule() {
   };
 
   const onAiSubmit = (data: AiScheduleFormData) => {
-    const file = fileInputRef.current?.files?.[0];
-    if (!file) {
+    if (!selectedFile) {
       toast({
         title: "Erro",
         description: "Por favor, selecione o PDF do edital.",
@@ -176,7 +176,7 @@ export default function Schedule() {
       return;
     }
 
-    if (file.type !== "application/pdf") {
+    if (selectedFile.type !== "application/pdf") {
       toast({
         title: "Erro",
         description: "Por favor, selecione apenas arquivos PDF.",
@@ -188,7 +188,7 @@ export default function Schedule() {
     createAiScheduleMutation.mutate({
       examDate: data.examDate,
       title: data.title,
-      file,
+      file: selectedFile,
     });
   };
 
@@ -265,7 +265,9 @@ export default function Schedule() {
 
                     <div className="space-y-2">
                       <Label htmlFor="editalPdf">PDF do Edital</Label>
-                      <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-primary-orange transition-colors">
+                      <div className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+                        selectedFile ? 'border-primary-orange bg-orange-50' : 'border-gray-300 hover:border-primary-orange'
+                      }`}>
                         <input
                           ref={fileInputRef}
                           type="file"
@@ -274,19 +276,43 @@ export default function Schedule() {
                           onChange={(e) => {
                             const file = e.target.files?.[0];
                             if (file) {
-                              // Update UI to show selected file
+                              setSelectedFile(file);
                             }
                           }}
                         />
-                        <FileText className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                        <button
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="text-primary-orange hover:text-secondary-orange font-medium"
-                        >
-                          Clique para selecionar o PDF do edital
-                        </button>
-                        <p className="text-xs text-gray-500 mt-1">Apenas arquivos PDF são aceitos</p>
+                        {selectedFile ? (
+                          <div className="space-y-2">
+                            <FileText className="w-8 h-8 text-primary-orange mx-auto" />
+                            <p className="font-medium text-primary-orange">{selectedFile.name}</p>
+                            <p className="text-xs text-gray-600">
+                              {(selectedFile.size / 1024 / 1024).toFixed(1)} MB
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedFile(null);
+                                if (fileInputRef.current) {
+                                  fileInputRef.current.value = "";
+                                }
+                              }}
+                              className="text-red-500 hover:text-red-700 text-sm underline"
+                            >
+                              Remover arquivo
+                            </button>
+                          </div>
+                        ) : (
+                          <div>
+                            <FileText className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                            <button
+                              type="button"
+                              onClick={() => fileInputRef.current?.click()}
+                              className="text-primary-orange hover:text-secondary-orange font-medium"
+                            >
+                              Clique para selecionar o PDF do edital
+                            </button>
+                            <p className="text-xs text-gray-500 mt-1">Apenas arquivos PDF são aceitos</p>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -297,6 +323,7 @@ export default function Schedule() {
                         onClick={() => {
                           setIsAiDialogOpen(false);
                           aiForm.reset();
+                          setSelectedFile(null);
                           if (fileInputRef.current) {
                             fileInputRef.current.value = "";
                           }

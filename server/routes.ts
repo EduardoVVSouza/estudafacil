@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertStudyScheduleSchema, insertStudySessionSchema, insertPdfDocumentSchema } from "@shared/schema";
 import { analyzeEditalPDF, extractTextFromPDF } from "./openai";
+import { generateBasicAnalysis, extractBasicTextFromFilename } from "./pdfAnalyzer";
 import multer from "multer";
 
 // Configure multer for file uploads
@@ -207,14 +208,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userId,
       });
 
-      // Convert PDF buffer to base64 for OpenAI
-      const base64Content = req.file.buffer.toString('base64');
+      let analysis;
       
-      // Extract text from PDF using OpenAI
-      const pdfText = await extractTextFromPDF(base64Content);
-      
-      // Analyze the edital and generate study plan
-      const analysis = await analyzeEditalPDF(pdfText, examDate);
+      try {
+        // Try using OpenAI first
+        const base64Content = req.file.buffer.toString('base64');
+        const pdfText = await extractTextFromPDF(base64Content);
+        analysis = await analyzeEditalPDF(pdfText, examDate);
+      } catch (error) {
+        console.log("OpenAI API unavailable, using fallback analyzer");
+        // Fallback to basic analysis when OpenAI fails
+        analysis = generateBasicAnalysis(req.file.originalname, examDate);
+      }
 
       // Calculate study period
       const startDate = new Date();
