@@ -47,6 +47,8 @@ export default function Schedule() {
     queryKey: [`/api/user/${MOCK_USER_ID}/schedules`],
   });
 
+  const schedulesArray = Array.isArray(schedules) ? schedules : [];
+
   const form = useForm<ScheduleFormData>({
     resolver: zodResolver(scheduleSchema),
     defaultValues: {
@@ -460,7 +462,8 @@ export default function Schedule() {
               </form>
             </Form>
           </DialogContent>
-        </Dialog>
+          </Dialog>
+        </div>
       </div>
 
       {isLoading ? (
@@ -481,19 +484,32 @@ export default function Schedule() {
             </Card>
           ))}
         </div>
-      ) : schedules && Array.isArray(schedules) && schedules.length > 0 ? (
+      ) : schedulesArray.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {schedules.map((schedule: StudySchedule) => (
+          {schedulesArray.map((schedule: StudySchedule) => (
             <Card key={schedule.id} className="hover:shadow-lg transition-shadow">
               <CardHeader>
                 <div className="flex justify-between items-start">
                   <div>
-                    <CardTitle className="text-lg text-dark-gray">
-                      {schedule.title}
-                    </CardTitle>
+                    <div className="flex items-center gap-2 mb-1">
+                      <CardTitle className="text-lg text-dark-gray">
+                        {schedule.title}
+                      </CardTitle>
+                      {schedule.isAiGenerated && (
+                        <Badge variant="secondary" className="bg-gradient-to-r from-purple-100 to-blue-100 text-purple-700 border-purple-200">
+                          <Brain className="w-3 h-3 mr-1" />
+                          IA
+                        </Badge>
+                      )}
+                    </div>
                     {schedule.description && (
                       <p className="text-sm text-medium-gray mt-1">
                         {schedule.description}
+                      </p>
+                    )}
+                    {schedule.examDate && (
+                      <p className="text-xs text-primary-orange font-medium mt-1">
+                        Prova: {formatDate(schedule.examDate)}
                       </p>
                     )}
                   </div>
