@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertStudyScheduleSchema, insertStudySessionSchema, insertPdfDocumentSchema } from "@shared/schema";
+import { analyzeEditalPDF, extractTextFromPDF } from "./openai";
 import multer from "multer";
 
 // Configure multer for file uploads

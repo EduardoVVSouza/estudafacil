@@ -18,6 +18,16 @@ export const studySchedules = pgTable("study_schedules", {
   endDate: text("end_date").notNull(), // ISO date string
   hoursPerDay: integer("hours_per_day").notNull(),
   createdAt: text("created_at").notNull(),
+  examDate: text("exam_date"), // Data da prova
+  editalPdfId: integer("edital_pdf_id"), // Referência ao PDF do edital
+  weeklyPlan: json("weekly_plan").$type<{
+    [day: string]: {
+      subject: string;
+      topics: string[];
+      hours: number;
+    }[];
+  }>(), // Plano semanal gerado pela IA
+  isAiGenerated: boolean("is_ai_generated").default(false), // Indica se foi gerado por IA
 });
 
 export const studySessions = pgTable("study_sessions", {
@@ -46,6 +56,13 @@ export const insertStudyScheduleSchema = createInsertSchema(studySchedules).omit
   id: true,
   userId: true,
   createdAt: true,
+});
+
+// Schema específico para criação de cronograma via IA
+export const aiScheduleSchema = z.object({
+  examDate: z.string().min(1, "Data do concurso é obrigatória"),
+  editalPdfFile: z.any(), // Para o upload do PDF
+  title: z.string().optional(),
 });
 
 export const insertStudySessionSchema = createInsertSchema(studySessions).omit({

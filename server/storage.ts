@@ -94,12 +94,22 @@ export class MemStorage implements IStorage {
     return this.schedules.get(id);
   }
 
-  async createSchedule(scheduleData: InsertStudySchedule & { userId: number }): Promise<StudySchedule> {
+  async createSchedule(scheduleData: any): Promise<StudySchedule> {
     const id = this.currentScheduleId++;
     const schedule: StudySchedule = {
-      ...scheduleData,
       id,
+      userId: scheduleData.userId,
+      title: scheduleData.title,
+      description: scheduleData.description || null,
+      subjects: Array.isArray(scheduleData.subjects) ? scheduleData.subjects : [],
+      startDate: scheduleData.startDate,
+      endDate: scheduleData.endDate,
+      hoursPerDay: scheduleData.hoursPerDay,
       createdAt: new Date().toISOString(),
+      examDate: scheduleData.examDate || null,
+      editalPdfId: scheduleData.editalPdfId || null,
+      weeklyPlan: scheduleData.weeklyPlan || null,
+      isAiGenerated: scheduleData.isAiGenerated || false,
     };
     this.schedules.set(id, schedule);
     return schedule;
@@ -130,6 +140,7 @@ export class MemStorage implements IStorage {
       ...sessionData,
       id,
       completedAt: new Date().toISOString(),
+      scheduleId: sessionData.scheduleId || null,
     };
     this.sessions.set(id, session);
     return session;
@@ -190,7 +201,7 @@ export class MemStorage implements IStorage {
     
     // Calculate streak (simplified - consecutive days with sessions)
     const sessionDates = sessions.map(s => new Date(s.completedAt).toDateString());
-    const uniqueDates = [...new Set(sessionDates)].sort();
+    const uniqueDatesArray = Array.from(new Set(sessionDates)).sort();
     
     let currentStreak = 0;
     const today = new Date().toDateString();
@@ -198,7 +209,7 @@ export class MemStorage implements IStorage {
     
     for (let i = 0; i < 30; i++) { // Check last 30 days
       const dateStr = checkDate.toDateString();
-      if (uniqueDates.includes(dateStr)) {
+      if (uniqueDatesArray.includes(dateStr)) {
         currentStreak++;
         checkDate.setDate(checkDate.getDate() - 1);
       } else {
